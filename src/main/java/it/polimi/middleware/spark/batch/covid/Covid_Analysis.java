@@ -41,31 +41,34 @@ public class Covid_Analysis {
                 .appName("Bank")
                 .getOrCreate();
 
-        final List<StructField> mySchemaFields = new ArrayList<>();
-        mySchemaFields.add(DataTypes.createStructField("person", DataTypes.StringType, true));
-        mySchemaFields.add(DataTypes.createStructField("account", DataTypes.StringType, true));
-        mySchemaFields.add(DataTypes.createStructField("amount", DataTypes.IntegerType, true));
-        final StructType mySchema = DataTypes.createStructType(mySchemaFields);
+        //final List<StructField> mySchemaFields = new ArrayList<>();
+        //mySchemaFields.add(DataTypes.createStructField("person", DataTypes.StringType, true));
+        //mySchemaFields.add(DataTypes.createStructField("account", DataTypes.StringType, true));
+        //mySchemaFields.add(DataTypes.createStructField("amount", DataTypes.IntegerType, true));
+        //final StructType mySchema = DataTypes.createStructType(mySchemaFields);
 
-        final Dataset<Row> deposits = spark
+        //final Dataset<Row> deposits = spark
+        //        .read()
+        //        .option("header", "false") //there is no header, read the entire file
+        //        .option("delimiter", ",")
+        //        .schema(mySchema) //I'm providing the schema since there's no header(person, account amount)
+        //        .csv(filePath + "files/bank/deposits.csv");
+//
+        Dataset<Row> withdrawals = spark
                 .read()
-                .option("header", "false") //there is no header, read the entire file
+                .option("header", "true")
                 .option("delimiter", ",")
-                .schema(mySchema) //I'm providing the schema since there's no header(person, account amount)
-                .csv(filePath + "files/bank/deposits.csv");
+                //.schema(mySchema)
+                .csv(filePath + "files/covid/data.csv");
 
-        final Dataset<Row> withdrawals = spark
-                .read()
-                .option("header", "false")
-                .option("delimiter", ",")
-                .schema(mySchema)
-                .csv(filePath + "files/bank/withdrawals.csv");
+        withdrawals = withdrawals.withColumn("cases",col("cases").cast(DataTypes.IntegerType));
+
 
         // Q1. Total amount of withdrawals for each person
         Dataset<Row> totAmount = withdrawals
-                .groupBy("person")
-                .sum("amount")
-                .withColumnRenamed("sum(amount)","TotalAmount");
+                .groupBy("countryterritoryCode")
+                .sum("cases")
+                .withColumnRenamed("sum(cases)","casi");
         totAmount.show();
 
         /* SQL QUERY PROGRAMMATICALLY
@@ -76,7 +79,7 @@ public class Covid_Analysis {
 
 
 
-        // Q2. Person with the maximum total amount of withdrawals
+       /* // Q2. Person with the maximum total amount of withdrawals
         totAmount.orderBy(desc("TotalAmount")).limit(1).show();
         // Q3 Accounts with negative balance
         Dataset<Row> withdrawalsByAccount = withdrawals
@@ -92,7 +95,7 @@ public class Covid_Analysis {
                         .and(withdrawalsByAccount.col("account").equalTo(depositsByAccount.col("account"))),
                 "left_outer").na().fill(0)
                 .filter(col("total1").gt(col("total2")))
-                .show();
+                .show();*/
         spark.close();
 
     }
