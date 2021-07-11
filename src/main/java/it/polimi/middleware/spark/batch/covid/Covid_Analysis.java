@@ -71,8 +71,9 @@ public class Covid_Analysis {
                                         col("countriesAndTerritories").as("country"),
                                         col("cases").cast(DataTypes.IntegerType));
 
-        covid_data = covid_data.withColumn("moving_avg", avg("cases")
-                .over( Window.partitionBy("country").orderBy(col("timestamp").cast("long")).rangeBetween(-days, 0)));
+        covid_data = covid_data
+                                .withColumn("moving_avg", avg("cases")
+                                .over( Window.partitionBy("country").orderBy(col("timestamp").cast("long")).rangeBetween(-days, 0)));
 
         //calcola dato aggregato
         Dataset<Row>  daily_cases = covid_data
@@ -80,6 +81,21 @@ public class Covid_Analysis {
                                         .sum("cases")
                                         .orderBy("date")
                                         .withColumnRenamed("sum(cases)","cases");
+        daily_cases = daily_cases.withColumn("moving_avg", avg("cases")
+                .over( Window.orderBy(col("timestamp").cast("long")).rangeBetween(-days, 0)));
+
+        daily_cases = daily_cases
+                                .withColumn("shifted_moving_avg",lag("moving_avg",1)
+                                .over(Window.orderBy("timestamp")));
+        daily_cases = daily_cases.withColumn("percentage_increase",
+                when(
+                        isnull(col("shifted_moving_avg")), 0)
+                        .otherwise(
+                                (col("shifted_moving_avg")
+                                        .minus(col("moving_avg"))
+                                        .divide(col("moving_avg")))
+                        )
+        );
         daily_cases.show();
 
 
@@ -103,7 +119,7 @@ public class Covid_Analysis {
                                             .filter(col("rank").leq(10))
                                             .orderBy("date","rank");
 
-        top_ten.show();
+        //top_ten.show();
         //Increase = (New Number - Original Number) /  original
 
         /*Dataset<Row> totAmount = covid_data
