@@ -7,6 +7,7 @@ import org.apache.spark.sql.RelationalGroupedDataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.expressions.Window;
+import org.apache.spark.sql.expressions.WindowSpec;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
@@ -70,10 +71,22 @@ public class Covid_Analysis {
                                         col("countriesAndTerritories").as("country"),
                                         col("cases").cast(DataTypes.IntegerType));
 
-        covid_data = covid_data.withColumn("movingAverage", avg("cases")
+        covid_data = covid_data.withColumn("moving_avg", avg("cases")
                 .over( Window.partitionBy("country").orderBy(col("timestamp").cast("long")).rangeBetween(-days, 0)));
 
+        WindowSpec w = Window.partitionBy("country").orderBy("timestamp");
+        covid_data = covid_data.withColumn("shifted_moving_avg",lag("moving_avg",1).over(w));
+        covid_data = covid_data.withColumn("percentage_increase",
+                                                    when(
+                                                            isnull(col("shifted_moving_avg")), 0)
+                                                    .otherwise(
+                                                            (col("shifted_moving_avg")
+                                                            .minus(col("moving_avg"))
+                                                            .divide(col("moving_avg")))
+                                                    )
+        );
         covid_data.show();
+        //Increase = (New Number - Original Number) /  original
 
         /*Dataset<Row> totAmount = covid_data
                 .groupBy("country")
