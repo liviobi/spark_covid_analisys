@@ -75,6 +75,12 @@ public class Covid_Analysis {
                 .over( Window.partitionBy("country").orderBy(col("timestamp").cast("long")).rangeBetween(-days, 0)));
 
         //calcola dato aggregato
+        Dataset<Row>  daily_cases = covid_data
+                                        .groupBy("date","timestamp")
+                                        .sum("cases")
+                                        .orderBy("date")
+                                        .withColumnRenamed("sum(cases)","cases");
+        daily_cases.show();
 
 
         WindowSpec window = Window.partitionBy("country").orderBy("timestamp");
@@ -94,7 +100,8 @@ public class Covid_Analysis {
         window = Window.partitionBy("date").orderBy(desc("percentage_increase"));
         //select only meaningful data
         Dataset<Row> top_ten = covid_data.select(covid_data.col("*"), rank().over(window).alias("rank"))
-                                            .filter(col("rank").leq(10));
+                                            .filter(col("rank").leq(10))
+                                            .orderBy("date","rank");
 
         top_ten.show();
         //Increase = (New Number - Original Number) /  original
