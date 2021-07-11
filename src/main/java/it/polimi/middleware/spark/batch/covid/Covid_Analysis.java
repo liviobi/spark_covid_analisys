@@ -55,31 +55,41 @@ public class Covid_Analysis {
         //        .schema(mySchema) //I'm providing the schema since there's no header(person, account amount)
         //        .csv(filePath + "files/bank/deposits.csv");
 //
-        Dataset<Row> withdrawals = spark
+        Dataset<Row> covid_data = spark
                 .read()
                 .option("header", "true")
                 .option("delimiter", ",")
                 //.option("inferSchema","true")
                 //.schema(mySchema)
                 .csv(filePath + "files/covid/data.csv");
+        long days = 6 * 86400;
+        //covid_data = covid_data.withColumn("cases",col("cases").cast(DataTypes.IntegerType));
+        covid_data = covid_data.select( col("dateRep"),
+                                        to_date(col("dateRep"), "dd/MM/yyyy").as("date"),
+                                        to_timestamp(col("dateRep"), "dd/MM/yyyy").as("timestamp"),
+                                        col("countriesAndTerritories").as("country"),
+                                        col("cases").cast(DataTypes.IntegerType));
 
-        //cast cases to int
+        covid_data = covid_data.withColumn("movingAverage", avg("cases")
+                .over( Window.partitionBy("country").orderBy(col("timestamp").cast("long")).rangeBetween(-days, 0)));
+
+        covid_data.show();
+
+        /*Dataset<Row> totAmount = covid_data
+                .groupBy("country")
+                .sum("cases")
+                .withColumnRenamed("sum(cases)","casi");
+        totAmount.show();*/
+
+        /*//cast cases to int
         withdrawals = withdrawals.withColumn("cases",col("cases").cast(DataTypes.IntegerType));
         //withdrawals.createOrReplaceTempView("withdrawals");
         //spark.sql("SELECT TO_DATE(CAST(UNIX_TIMESTAMP(dateRep, 'dd/MM/yyyy') AS TIMESTAMP)) AS newdate FROM withdrawals").show();
         withdrawals = withdrawals.withColumn("movingAverage", avg("cases")
                 .over( Window.partitionBy("countriesAndTerritories").rowsBetween(-6,0)));
-        withdrawals.show();
+        withdrawals.show();*/
 
         //val wSpec1 = Window.partitionBy("name").orderBy("date").rowsBetween(-2, 0)
-
-
-        /*// Q1. Total amount of withdrawals for each person
-        Dataset<Row> totAmount = withdrawals
-                .groupBy("countryterritoryCode")
-                .sum("cases")
-                .withColumnRenamed("sum(cases)","casi");
-        totAmount.show();*/
 
         /* SQL QUERY PROGRAMMATICALLY
         // Register the DataFrame as a SQL temporary view
