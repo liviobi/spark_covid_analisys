@@ -6,6 +6,7 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.RelationalGroupedDataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.expressions.Window;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
@@ -58,18 +59,27 @@ public class Covid_Analysis {
                 .read()
                 .option("header", "true")
                 .option("delimiter", ",")
+                //.option("inferSchema","true")
                 //.schema(mySchema)
                 .csv(filePath + "files/covid/data.csv");
 
+        //cast cases to int
         withdrawals = withdrawals.withColumn("cases",col("cases").cast(DataTypes.IntegerType));
+        //withdrawals.createOrReplaceTempView("withdrawals");
+        //spark.sql("SELECT TO_DATE(CAST(UNIX_TIMESTAMP(dateRep, 'dd/MM/yyyy') AS TIMESTAMP)) AS newdate FROM withdrawals").show();
+        withdrawals = withdrawals.withColumn("movingAverage", avg("cases")
+                .over( Window.partitionBy("countriesAndTerritories").rowsBetween(-6,0)));
+        withdrawals.show();
+
+        //val wSpec1 = Window.partitionBy("name").orderBy("date").rowsBetween(-2, 0)
 
 
-        // Q1. Total amount of withdrawals for each person
+        /*// Q1. Total amount of withdrawals for each person
         Dataset<Row> totAmount = withdrawals
                 .groupBy("countryterritoryCode")
                 .sum("cases")
                 .withColumnRenamed("sum(cases)","casi");
-        totAmount.show();
+        totAmount.show();*/
 
         /* SQL QUERY PROGRAMMATICALLY
         // Register the DataFrame as a SQL temporary view
