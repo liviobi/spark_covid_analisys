@@ -74,8 +74,13 @@ public class Covid_Analysis {
         covid_data = covid_data.withColumn("moving_avg", avg("cases")
                 .over( Window.partitionBy("country").orderBy(col("timestamp").cast("long")).rangeBetween(-days, 0)));
 
-        WindowSpec w = Window.partitionBy("country").orderBy("timestamp");
-        covid_data = covid_data.withColumn("shifted_moving_avg",lag("moving_avg",1).over(w));
+        //calcola dato aggregato
+
+
+        WindowSpec window = Window.partitionBy("country").orderBy("timestamp");
+        covid_data = covid_data.withColumn("shifted_moving_avg",lag("moving_avg",1).over(window));
+        //rimuovi righe che contengono null values
+
         covid_data = covid_data.withColumn("percentage_increase",
                                                     when(
                                                             isnull(col("shifted_moving_avg")), 0)
@@ -85,7 +90,13 @@ public class Covid_Analysis {
                                                             .divide(col("moving_avg")))
                                                     )
         );
-        covid_data.show();
+
+        window = Window.partitionBy("date").orderBy(desc("percentage_increase"));
+        //select only meaningful data
+        Dataset<Row> top_ten = covid_data.select(covid_data.col("*"), rank().over(window).alias("rank"))
+                                            .filter(col("rank").leq(10));
+
+        top_ten.show();
         //Increase = (New Number - Original Number) /  original
 
         /*Dataset<Row> totAmount = covid_data
