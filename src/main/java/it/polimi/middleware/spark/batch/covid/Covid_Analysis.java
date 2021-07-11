@@ -96,6 +96,7 @@ public class Covid_Analysis {
                                         .divide(col("moving_avg")))
                         )
         );
+        daily_cases = daily_cases.select("date","cases","moving_avg","percentage_increase");
         daily_cases.show();
 
 
@@ -118,8 +119,15 @@ public class Covid_Analysis {
         Dataset<Row> top_ten = covid_data.select(covid_data.col("*"), rank().over(window).alias("rank"))
                                             .filter(col("rank").leq(10))
                                             .orderBy("date","rank");
-
+        top_ten = top_ten.select("date","percentage_increase","rank");
+        top_ten
+                .coalesce(1)
+                .write()
+                .option("header", "true")
+                .csv(filePath + "files/covid/output/top_ten.csv");
         //top_ten.show();
+
+
         //Increase = (New Number - Original Number) /  original
 
         /*Dataset<Row> totAmount = covid_data
