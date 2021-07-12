@@ -63,6 +63,10 @@ public class Covid_Analysis {
                                         .cache()
         ;
 
+
+        /**
+        * DAILY CASES
+        */
         daily_cases_df = daily_cases_df
                                         .withColumn("moving_avg", avg("cases")
                                         .over( Window.orderBy(col("timestamp").cast("long")).rangeBetween(-days, 0)))
@@ -70,16 +74,18 @@ public class Covid_Analysis {
         ;
 
         daily_cases_df = daily_cases_df
-                                        .withColumn("shifted_moving_avg",lag("moving_avg",1)
+                                        .withColumn("prev_day_moving_average",lag("moving_avg",1)
                                         .over(Window.orderBy("timestamp")))
                                         .cache()
         ;
 
         daily_cases_df = daily_cases_df.withColumn("percentage_increase",
                 when(
-                        isnull(col("shifted_moving_avg")), 0)
+                        isnull(col("prev_day_moving_average")), 0)
                 .otherwise(
-                        (col("shifted_moving_avg").minus(col("moving_avg")).divide(col("moving_avg")))
+                        col("prev_day_moving_average")
+                                .minus(col("moving_avg"))
+                                .divide(col("moving_avg").plus(1))
                         )
         )
                 .cache()
@@ -102,9 +108,12 @@ public class Covid_Analysis {
         daily_cases_df.unpersist();
 
 
+        /**
+         * CASES PER COUNTRY
+         */
         WindowSpec window = Window.partitionBy("country").orderBy("timestamp");
         cases_per_country_df = cases_per_country_df
-                                                    .withColumn("shifted_moving_avg",lag("moving_avg",1)
+                                                    .withColumn("prev_day_moving_average",lag("moving_avg",1)
                                                     .over(window))
                                                     .cache()
         ;
@@ -112,19 +121,21 @@ public class Covid_Analysis {
         cases_per_country_df = cases_per_country_df
                                                     .withColumn("percentage_increase",
                                                         when(
-                                                                isnull(col("shifted_moving_avg")), 0)
+                                                                isnull(col("prev_day_moving_average")), 0)
                                                         .otherwise(
-                                                                (col("shifted_moving_avg")
+                                                                (col("prev_day_moving_average")
                                                                         .minus(col("moving_avg"))
-                                                                        .divide(col("moving_avg")))
+                                                                        .divide(col("moving_avg").plus(1)))
                                                         )
                                                     )
                                                     .cache()
         ;
 
+
         cases_per_country_df = cases_per_country_df
-                                                    .select("date","country","cases","moving_avg","percentage_increase")
-                                                    .cache();
+                                                    .select("date", "country", "cases", "moving_avg", "percentage_increase")
+                                                    .cache()
+        ;
 
         cases_per_country_df
                 .coalesce(1)
@@ -135,11 +146,23 @@ public class Covid_Analysis {
 
         cases_per_country_df.show();
 
-        window = Window.partitionBy("date").orderBy(desc("percentage_increase"));
-        //select only meaningful data
-        Dataset<Row> top_ten_df = cases_per_country_df.select(cases_per_country_df.col("*"), rank().over(window).alias("rank"))
+
+        /**
+         * TOP 10 COUNTRIES WITH GREATER PERCENTAGE INCREASE
+         */
+        window = Window
+                        .partitionBy("date")
+                        .orderBy(desc("percentage_increase"));
+
+
+        Dataset<Row> top_ten_df = cases_per_country_df
+                                            //.na()
+                                            //.drop()
+                                            .select(cases_per_country_df.col("*"), rank().over(window).alias("rank"))
                                             .filter(col("rank").leq(10))
-                                            .orderBy("date","rank").cache();
+                                            .orderBy("date","rank")
+                                            .cache()
+        ;
         top_ten_df = top_ten_df
                                 .select("date","country","percentage_increase","rank")
                                 .cache()
@@ -151,7 +174,6 @@ public class Covid_Analysis {
                 .option("header", "true")
                 .mode("overwrite")
                 .csv(filePath + "files/covid/output/top_ten.csv");
-
         top_ten_df.show();
 
         spark.close();
