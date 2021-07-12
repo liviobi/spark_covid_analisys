@@ -24,7 +24,6 @@ public class Covid_Analysis {
 
         final String master = args.length > 0 ? args[0] : "local[4]";
         final String filePath = args.length > 1 ? args[1] : "./";
-        //final String appName = useCache ? "BankWithCache" : "BankNoCache";
 
         final SparkSession spark = SparkSession
                 .builder()
