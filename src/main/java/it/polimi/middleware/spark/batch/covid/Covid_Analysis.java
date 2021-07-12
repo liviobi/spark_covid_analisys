@@ -16,17 +16,7 @@ import it.polimi.middleware.spark.utils.LogUtils;
 
 import static org.apache.spark.sql.functions.*;
 
-/**
- * Bank example
- *
- * Input: csv files with list of deposits and withdrawals, having the following
- * schema ("person: String, account: String, amount: Int)
- *
- * Queries
- * Q1. Print the total amount of withdrawals for each person.
- * Q2. Print the person with the maximum total amount of withdrawals
- * Q3. Print all the accounts with a negative balance
- */
+
 public class Covid_Analysis {
     private static final boolean useCache = true;
 
@@ -35,59 +25,47 @@ public class Covid_Analysis {
 
         final String master = args.length > 0 ? args[0] : "local[4]";
         final String filePath = args.length > 1 ? args[1] : "./";
-        final String appName = useCache ? "BankWithCache" : "BankNoCache";
+        //final String appName = useCache ? "BankWithCache" : "BankNoCache";
 
         final SparkSession spark = SparkSession
                 .builder()
                 .master(master)
-                .appName("Bank")
+                .appName("Covid Analysis")
                 .getOrCreate();
 
-        //final List<StructField> mySchemaFields = new ArrayList<>();
-        //mySchemaFields.add(DataTypes.createStructField("person", DataTypes.StringType, true));
-        //mySchemaFields.add(DataTypes.createStructField("account", DataTypes.StringType, true));
-        //mySchemaFields.add(DataTypes.createStructField("amount", DataTypes.IntegerType, true));
-        //final StructType mySchema = DataTypes.createStructType(mySchemaFields);
-
-        //final Dataset<Row> deposits = spark
-        //        .read()
-        //        .option("header", "false") //there is no header, read the entire file
-        //        .option("delimiter", ",")
-        //        .schema(mySchema) //I'm providing the schema since there's no header(person, account amount)
-        //        .csv(filePath + "files/bank/deposits.csv");
 //
-        Dataset<Row> covid_data = spark
+        Dataset<Row> cases_per_country_df = spark
                 .read()
                 .option("header", "true")
                 .option("delimiter", ",")
-                //.option("inferSchema","true")
-                //.schema(mySchema)
                 .csv(filePath + "files/covid/data.csv");
-        long days = 6 * 86400;
-        //covid_data = covid_data.withColumn("cases",col("cases").cast(DataTypes.IntegerType));
-        covid_data = covid_data.select( col("dateRep"),
+
+
+        cases_per_country_df = cases_per_country_df.select( col("dateRep"),
                                         to_date(col("dateRep"), "dd/MM/yyyy").as("date"),
                                         to_timestamp(col("dateRep"), "dd/MM/yyyy").as("timestamp"),
                                         col("countriesAndTerritories").as("country"),
                                         col("cases").cast(DataTypes.IntegerType));
 
-        covid_data = covid_data
+        long days = 6 * 86400;
+
+        cases_per_country_df = cases_per_country_df
                                 .withColumn("moving_avg", avg("cases")
                                 .over( Window.partitionBy("country").orderBy(col("timestamp").cast("long")).rangeBetween(-days, 0)));
 
         //calcola dato aggregato
-        Dataset<Row>  daily_cases = covid_data
+        Dataset<Row>  daily_cases_df = cases_per_country_df
                                         .groupBy("date","timestamp")
                                         .sum("cases")
                                         .orderBy("date")
                                         .withColumnRenamed("sum(cases)","cases");
-        daily_cases = daily_cases.withColumn("moving_avg", avg("cases")
+        daily_cases_df = daily_cases_df.withColumn("moving_avg", avg("cases")
                 .over( Window.orderBy(col("timestamp").cast("long")).rangeBetween(-days, 0)));
 
-        daily_cases = daily_cases
+        daily_cases_df = daily_cases_df
                                 .withColumn("shifted_moving_avg",lag("moving_avg",1)
                                 .over(Window.orderBy("timestamp")));
-        daily_cases = daily_cases.withColumn("percentage_increase",
+        daily_cases_df = daily_cases_df.withColumn("percentage_increase",
                 when(
                         isnull(col("shifted_moving_avg")), 0)
                         .otherwise(
@@ -96,15 +74,24 @@ public class Covid_Analysis {
                                         .divide(col("moving_avg")))
                         )
         );
-        daily_cases = daily_cases.select("date","cases","moving_avg","percentage_increase");
-        daily_cases.show();
+        daily_cases_df = daily_cases_df.select("date","cases","moving_avg","percentage_increase");
+
+
+        daily_cases_df
+                .coalesce(1)
+                .write()
+                .option("header", "true")
+                .mode("overwrite")
+                .csv(filePath + "files/covid/output/daily_cases.csv");
+
+        daily_cases_df.show();
 
 
         WindowSpec window = Window.partitionBy("country").orderBy("timestamp");
-        covid_data = covid_data.withColumn("shifted_moving_avg",lag("moving_avg",1).over(window));
+        cases_per_country_df = cases_per_country_df.withColumn("shifted_moving_avg",lag("moving_avg",1).over(window));
         //rimuovi righe che contengono null values
 
-        covid_data = covid_data.withColumn("percentage_increase",
+        cases_per_country_df = cases_per_country_df.withColumn("percentage_increase",
                                                     when(
                                                             isnull(col("shifted_moving_avg")), 0)
                                                     .otherwise(
@@ -113,64 +100,32 @@ public class Covid_Analysis {
                                                             .divide(col("moving_avg")))
                                                     )
         );
-        covid_data.select("date","country","cases","moving_avg","percentage_increase").show();
+        cases_per_country_df = cases_per_country_df.select("date","country","cases","moving_avg","percentage_increase");
 
-        window = Window.partitionBy("date").orderBy(desc("percentage_increase"));
-        //select only meaningful data
-        Dataset<Row> top_ten = covid_data.select(covid_data.col("*"), rank().over(window).alias("rank"))
-                                            .filter(col("rank").leq(10))
-                                            .orderBy("date","rank");
-        top_ten = top_ten.select("date","country","percentage_increase","rank");
-        /*top_ten
+        cases_per_country_df
                 .coalesce(1)
                 .write()
                 .option("header", "true")
-                .csv(filePath + "files/covid/output/top_ten.csv");*/
-        top_ten.show();
+                .mode("overwrite")
+                .csv(filePath + "files/covid/output/cases_per_country.csv");
 
+        cases_per_country_df.show();
 
+        window = Window.partitionBy("date").orderBy(desc("percentage_increase"));
+        //select only meaningful data
+        Dataset<Row> top_ten_df = cases_per_country_df.select(cases_per_country_df.col("*"), rank().over(window).alias("rank"))
+                                            .filter(col("rank").leq(10))
+                                            .orderBy("date","rank");
+        top_ten_df = top_ten_df.select("date","country","percentage_increase","rank");
+        top_ten_df
+                .coalesce(1)
+                .write()
+                .option("header", "true")
+                .mode("overwrite")
+                .csv(filePath + "files/covid/output/top_ten.csv");
 
-        /*Dataset<Row> totAmount = covid_data
-                .groupBy("country")
-                .sum("cases")
-                .withColumnRenamed("sum(cases)","casi");
-        totAmount.show();*/
+        top_ten_df.show();
 
-        /*//cast cases to int
-        withdrawals = withdrawals.withColumn("cases",col("cases").cast(DataTypes.IntegerType));
-        //withdrawals.createOrReplaceTempView("withdrawals");
-        //spark.sql("SELECT TO_DATE(CAST(UNIX_TIMESTAMP(dateRep, 'dd/MM/yyyy') AS TIMESTAMP)) AS newdate FROM withdrawals").show();
-        withdrawals = withdrawals.withColumn("movingAverage", avg("cases")
-                .over( Window.partitionBy("countriesAndTerritories").rowsBetween(-6,0)));
-        withdrawals.show();*/
-
-        //val wSpec1 = Window.partitionBy("name").orderBy("date").rowsBetween(-2, 0)
-
-        /* SQL QUERY PROGRAMMATICALLY
-        // Register the DataFrame as a SQL temporary view
-        withdrawals.createOrReplaceTempView("withdrawals");
-        Dataset<Row> sqlDF = spark.sql("SELECT person, sum(amount) as TotalAmount FROM withdrawals GROUP BY person");
-        sqlDF.show();*/
-
-
-
-       /* // Q2. Person with the maximum total amount of withdrawals
-        totAmount.orderBy(desc("TotalAmount")).limit(1).show();
-        // Q3 Accounts with negative balance
-        Dataset<Row> withdrawalsByAccount = withdrawals
-                .groupBy("person","account")
-                .sum("amount")
-                .withColumnRenamed("sum(amount)","total1" );
-        Dataset<Row> depositsByAccount = deposits
-                .groupBy("person","account")
-                .sum("amount")
-                .withColumnRenamed("sum(amount)","total2" );
-        withdrawalsByAccount.join(depositsByAccount,
-                withdrawalsByAccount.col("person").equalTo(depositsByAccount.col("person"))
-                        .and(withdrawalsByAccount.col("account").equalTo(depositsByAccount.col("account"))),
-                "left_outer").na().fill(0)
-                .filter(col("total1").gt(col("total2")))
-                .show();*/
         spark.close();
 
     }
