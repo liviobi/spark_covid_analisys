@@ -88,7 +88,6 @@ public class Covid_Analysis {
 
         daily_cases_df = daily_cases_df
                                         .select("date","cases","moving_avg","percentage_increase")
-                                        .cache()
         ;
 
 
@@ -129,7 +128,6 @@ public class Covid_Analysis {
 
         cases_per_country_df = cases_per_country_df
                                                     .select("date", "country", "cases", "moving_avg", "percentage_increase")
-                                                    .cache()
         ;
 
         cases_per_country_df
@@ -160,7 +158,6 @@ public class Covid_Analysis {
         ;
         top_ten_df = top_ten_df
                                 .select("date","country","percentage_increase","rank")
-                                .cache()
         ;
 
         top_ten_df
