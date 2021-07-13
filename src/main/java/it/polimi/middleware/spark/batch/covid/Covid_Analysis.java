@@ -17,8 +17,12 @@ public class Covid_Analysis {
     public static void main(String[] args) {
         LogUtils.setLogLevel();
 
+        //Pass spark://127.0.0.1:7077 when running the local machine
+        //Pass yarn-client when running on aws
         final String master = args.length > 0 ? args[0] : "local[4]";
+
         final String filePath = args.length > 1 ? args[1] : "./";
+
 
         final SparkSession spark = SparkSession
                 .builder()
@@ -32,7 +36,7 @@ public class Covid_Analysis {
                 .option("delimiter", ",")
                 .csv(filePath + "files/covid/data.csv");
 
-
+        //Need to have the data in timestamp format in order to be able to use the rangeBetween function
         cases_per_country_df = cases_per_country_df.select( col("dateRep"),
                                         to_date(col("dateRep"), "dd/MM/yyyy").as("date"),
                                         to_timestamp(col("dateRep"), "dd/MM/yyyy").as("timestamp"),
@@ -40,16 +44,23 @@ public class Covid_Analysis {
                                         col("cases").cast(DataTypes.IntegerType))
                                         .cache()
         ;
-
+        //86400 are the second in a day. Need this to compute the beginning of the window
         long days = 6 * 86400;
 
+        //For each country compute the 7 days moving average of the cases. I want to use the function rangeBetween() because
+        //it assures that the window is 7 days, so it's safe in case of missing rows unlike rowsBetween() i.e. I don't risk to
+        //take into consideration rows older than a week
         cases_per_country_df = cases_per_country_df
                                 .withColumn("moving_avg", avg("cases")
                                 .over( Window.partitionBy("country").orderBy(col("timestamp").cast("long")).rangeBetween(-days, 0)))
                                 .cache()
         ;
 
-        //calcola dato aggregato
+        /**
+         * DAILY CASES
+         */
+
+        //Compute the cases for each day
         Dataset<Row>  daily_cases_df = cases_per_country_df
                                         .groupBy("date","timestamp")
                                         .sum("cases")
@@ -59,21 +70,21 @@ public class Covid_Analysis {
         ;
 
 
-        /**
-        * DAILY CASES
-        */
+        //compute the 7 days moving average
         daily_cases_df = daily_cases_df
                                         .withColumn("moving_avg", avg("cases")
                                         .over( Window.orderBy(col("timestamp").cast("long")).rangeBetween(-days, 0)))
                                         .cache()
         ;
 
+        //Add a column with the moving average for the previous day
         daily_cases_df = daily_cases_df
                                         .withColumn("prev_day_moving_average",lag("moving_avg",1)
                                         .over(Window.orderBy("timestamp")))
                                         .cache()
         ;
 
+        //compute the percentage increase
         daily_cases_df = daily_cases_df.withColumn("percentage_increase",
                 when(
                         isnull(col("prev_day_moving_average")), 0)
@@ -90,7 +101,7 @@ public class Covid_Analysis {
                                         .select("date","cases","moving_avg","percentage_increase")
         ;
 
-
+        //save to file
         daily_cases_df
                 .coalesce(1)
                 .write()
@@ -99,19 +110,23 @@ public class Covid_Analysis {
                 .csv(filePath + "files/covid/output/daily_cases.csv");
 
         daily_cases_df.show();
+        //Won't need this data in the future, unpersist
         daily_cases_df.unpersist();
 
 
         /**
          * CASES PER COUNTRY
          */
+        //I need to consider each country independently for computing the moving average percentage increase
         WindowSpec window = Window.partitionBy("country").orderBy("timestamp");
+        //Add a column with the moving average for the previous day
         cases_per_country_df = cases_per_country_df
                                                     .withColumn("prev_day_moving_average",lag("moving_avg",1)
                                                     .over(window))
                                                     .cache()
         ;
 
+        //compute the percentage increase
         cases_per_country_df = cases_per_country_df
                                                     .withColumn("percentage_increase",
                                                         when(
@@ -147,7 +162,7 @@ public class Covid_Analysis {
                         .partitionBy("date")
                         .orderBy(desc("percentage_increase"));
 
-
+        //Rank the rows based on the percentage increase and then take the one with rank less than equal 10
         Dataset<Row> top_ten_df = cases_per_country_df
                                             //.na()
                                             //.drop()
