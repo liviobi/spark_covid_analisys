@@ -78,8 +78,8 @@ public class Covid_Analysis {
                 when(
                         isnull(col("prev_day_moving_average")), 0)
                 .otherwise(
-                        col("prev_day_moving_average")
-                                .minus(col("moving_avg"))
+                        col("moving_avg")
+                                .minus(col("prev_day_moving_average"))
                                 .divide(col("moving_avg").plus(1))
                         )
         )
@@ -117,8 +117,8 @@ public class Covid_Analysis {
                                                         when(
                                                                 isnull(col("prev_day_moving_average")), 0)
                                                         .otherwise(
-                                                                (col("prev_day_moving_average")
-                                                                        .minus(col("moving_avg"))
+                                                                (col("moving_avg")
+                                                                        .minus(col("prev_day_moving_average"))
                                                                         .divide(col("moving_avg").plus(1)))
                                                         )
                                                     )
